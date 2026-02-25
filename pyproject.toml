@@ -9,6 +9,7 @@ description = "MVP multi-agent system for synthetic bioequivalence study design"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
+  "biopython",
   "openai",
   "pydantic",
   "python-dotenv",
