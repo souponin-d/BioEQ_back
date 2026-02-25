@@ -17,7 +17,39 @@ class ReviewerOutput(BaseModel):
     risk_flags: list[str]
 
 
+class PubMedSearchResult(BaseModel):
+    query: str
+    pmids: list[str]
+
+
+class PubMedArticle(BaseModel):
+    pmid: str
+    title: str
+    journal: str
+    year: str
+    abstract: str
+
+
+class PKParameter(BaseModel):
+    value: float
+    unit: str
+    pmid: str
+
+
+class PubMedPKAnalysis(BaseModel):
+    t_half: list[PKParameter]
+    cmax: list[PKParameter]
+    notes: str
+
+
 class OrchestratorResult(BaseModel):
     user_input: dict[str, Any]
     planner_output: PlannerOutput
+    pubmed_search: PubMedSearchResult
+    pubmed_articles: list[PubMedArticle]
+    pk_analysis: PubMedPKAnalysis
     reviewer_output: ReviewerOutput
+    t_half_values: list[float]
+    cmax_values: list[float]
+    mean_t_half: float | None
+    mean_cmax: float | None

@@ -31,9 +31,8 @@ def fmt_seconds(value: float) -> str:
 @contextmanager
 def timer(name: str, logger: logging.Logger) -> Iterator[None]:
     started_at = time.perf_counter()
-    logger.info("START %s", name)
     try:
         yield
     finally:
         elapsed = time.perf_counter() - started_at
-        logger.info("END %s | elapsed=%ss", name, fmt_seconds(elapsed))
+        logger.info("%s | elapsed=%ss", name, fmt_seconds(elapsed))

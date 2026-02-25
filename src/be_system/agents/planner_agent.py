@@ -15,22 +15,15 @@ class PlannerAgent:
     def run(self, user_input: dict) -> PlannerOutput:
         input_json = json.dumps(user_input, ensure_ascii=False, indent=2)
         prompt = PLANNER_USER_PROMPT_TEMPLATE.format(input_json=input_json)
-
-        self.logger.info("PlannerAgent start | input_size=%d", len(input_json))
-        self.logger.debug("Planner prompt preview: %s", prompt[:200])
-        self.logger.info("PlannerAgent sending request")
+        self.logger.debug("Planner prompt_len=%d", len(prompt))
 
         raw = self.llm_client.chat(PLANNER_SYSTEM_PROMPT, prompt)
-        self.logger.info("PlannerAgent received raw response | response_len=%d", len(raw))
-        self.logger.debug("Planner raw response preview: %s", raw[:200])
+        self.logger.debug("Planner raw LLM response: %s", raw)
 
         try:
             data = extract_json(raw)
-            self.logger.info("PlannerAgent JSON parse completed")
         except Exception as exc:
-            self.logger.exception("PlannerAgent JSON parse failed")
+            self.logger.exception("Planner JSON parse failed")
             raise ValueError("PlannerAgent failed to parse JSON response.") from exc
 
-        result = PlannerOutput.model_validate(data)
-        self.logger.info("PlannerAgent end")
-        return result
+        return PlannerOutput.model_validate(data)
