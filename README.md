@@ -13,7 +13,7 @@ bash scripts/run_vllm_qwen.sh
 2. Запуск системы:
 
 ```bash
-python -m be_system.main
+python main.py
 ```
 
 ## Что делает MVP
