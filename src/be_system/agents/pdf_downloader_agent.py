@@ -1,4 +1,5 @@
 import hashlib
+import json
 import logging
 from pathlib import Path
 from urllib.error import HTTPError
@@ -30,13 +31,20 @@ class PdfDownloaderAgent:
         files: list[DownloadedFile] = []
 
         for link in links:
-            if not link.pmcid:
+            if not (link.pmcid and link.has_fulltext_pdf and link.pdf_url_resolved):
                 continue
 
-            candidate_url = link.pdf_url_resolved or f"https://pmc.ncbi.nlm.nih.gov/articles/{link.pmcid}/pdf/"
+            candidate_url = link.pdf_url_resolved
             target_path = base_dir / f"{link.pmcid}.pdf"
             debug_html_path = invalid_dir / f"{link.pmcid}.html"
-            downloaded = self._download_file(link.pmcid, candidate_url, target_path, debug_html_path)
+            invalid_meta_path = invalid_dir / f"{link.pmcid}_invalid.json"
+            downloaded = self._download_file(
+                link.pmcid,
+                candidate_url,
+                target_path,
+                debug_html_path,
+                invalid_meta_path,
+            )
             files.append(downloaded)
 
         ok_count = len([f for f in files if f.is_valid_pdf])
@@ -50,6 +58,7 @@ class PdfDownloaderAgent:
         url: str,
         target_path: Path,
         debug_html_path: Path,
+        invalid_meta_path: Path,
     ) -> DownloadedFile:
         status_code: int | None = None
         content_type: str | None = None
@@ -69,6 +78,14 @@ class PdfDownloaderAgent:
         except Exception:
             self.logger.exception("Failed to download PDF | pmcid=%s | url=%s", doc_id, url)
             reason = "download_error"
+
+        self.logger.debug(
+            "URL response | pmcid=%s | url=%s | status=%s | content_type=%s",
+            doc_id,
+            url,
+            status_code,
+            content_type,
+        )
 
         if reason is None:
             reason = self._validate_pdf(status_code, content_type, body)
@@ -104,6 +121,20 @@ class PdfDownloaderAgent:
         target_path.unlink(missing_ok=True)
         if body.startswith(b"<html") or b"<html" in body[:1000].lower():
             debug_html_path.write_bytes(body)
+        invalid_meta_path.write_text(
+            json.dumps(
+                {
+                    "id": doc_id,
+                    "url": url,
+                    "status_code": status_code,
+                    "content_type": content_type,
+                    "reason": reason,
+                },
+                ensure_ascii=False,
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
 
         self.logger.info(
             "PDF invalid | pmcid=%s | status=%s | content_type=%s | reason=%s | first_bytes=%s",

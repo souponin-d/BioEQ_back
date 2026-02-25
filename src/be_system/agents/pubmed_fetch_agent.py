@@ -1,4 +1,5 @@
 import logging
+import time
 
 from Bio import Entrez
 
@@ -6,7 +7,8 @@ from be_system.schemas import PubMedArticle
 
 
 class PubMedFetchAgent:
-    def __init__(self):
+    def __init__(self, pubmed_sleep_sec: float = 1.0):
+        self.pubmed_sleep_sec = pubmed_sleep_sec
         self.logger = logging.getLogger("be_system.agents.pubmed_fetch")
 
     def run(self, pmids: list[str]) -> list[PubMedArticle]:
@@ -20,6 +22,7 @@ class PubMedFetchAgent:
             retmode="xml",
         ) as handle:
             payload = Entrez.read(handle)
+        time.sleep(self.pubmed_sleep_sec)
 
         articles: list[PubMedArticle] = []
         for item in payload.get("PubmedArticle", []):

@@ -14,7 +14,7 @@ if str(SRC_DIR) not in sys.path:
 
 from be_system.agents.planner_agent import PlannerAgent
 from be_system.agents.pk_extractor_agent import PKExtractorAgent
-from be_system.agents.pmc_pdf_link_agent import PmcPdfLinkAgent
+from be_system.agents.abstract_evaluator_agent import AbstractEvaluatorAgent
 from be_system.agents.pmc_resolver_agent import PMCResolverAgent
 from be_system.agents.pubmed_fetch_agent import PubMedFetchAgent
 from be_system.agents.pdf_downloader_agent import PdfDownloaderAgent
@@ -22,6 +22,8 @@ from be_system.agents.pdf_parser_agent import PdfParserAgent
 from be_system.agents.retrieval_agent import RetrievalAgent
 from be_system.agents.pubmed_search_agent import PubMedSearchAgent
 from be_system.agents.reviewer_agent import ReviewerAgent
+from be_system.agents.xml_downloader_agent import XmlDownloaderAgent
+from be_system.agents.xml_parser_agent import XmlParserAgent
 from be_system.llm_client import LLMClient
 from be_system.logging_utils import fmt_seconds, setup_logging
 from be_system.orchestrator import Orchestrator
@@ -33,6 +35,8 @@ ENTREZ_EMAIL = "example@example.com"
 ENTREZ_TOOL = "be_system_proto"
 PUBMED_N_ARTICLES = 5
 LOG_LEVEL = "INFO"
+PUBMED_CYCLES = 2
+PUBMED_SLEEP_SEC = 1.0
 
 
 def main() -> None:
@@ -49,6 +53,8 @@ def main() -> None:
         api_key = os.getenv("VLLM_API_KEY", "local")
         input_path = Path(os.getenv("USER_INPUT_PATH", "configs/user_input.json"))
         pubmed_n_articles = int(os.getenv("PUBMED_N_ARTICLES", str(PUBMED_N_ARTICLES)))
+        pubmed_cycles = int(os.getenv("PUBMED_CYCLES", str(PUBMED_CYCLES)))
+        pubmed_sleep_sec = float(os.getenv("PUBMED_SLEEP_SEC", str(PUBMED_SLEEP_SEC)))
 
         planner_model = os.getenv("PLANNER_MODEL", os.getenv("VLLM_MODEL", DEFAULT_MODEL))
         reviewer_model = os.getenv("REVIEWER_MODEL", os.getenv("VLLM_MODEL", DEFAULT_MODEL))
@@ -69,15 +75,22 @@ def main() -> None:
 
         orchestrator = Orchestrator(
             planner_agent=PlannerAgent(planner_llm),
-            pubmed_search_agent=PubMedSearchAgent(n_articles=pubmed_n_articles),
-            pubmed_fetch_agent=PubMedFetchAgent(),
-            pmc_resolver_agent=PMCResolverAgent(),
-            pmc_pdf_link_agent=PmcPdfLinkAgent(),
+            pubmed_search_agent=PubMedSearchAgent(
+                n_articles=pubmed_n_articles,
+                pubmed_sleep_sec=pubmed_sleep_sec,
+            ),
+            pubmed_fetch_agent=PubMedFetchAgent(pubmed_sleep_sec=pubmed_sleep_sec),
+            abstract_evaluator_agent=AbstractEvaluatorAgent(),
+            pmc_resolver_agent=PMCResolverAgent(pubmed_sleep_sec=pubmed_sleep_sec),
             pdf_downloader_agent=PdfDownloaderAgent(),
+            xml_downloader_agent=XmlDownloaderAgent(),
             pdf_parser_agent=PdfParserAgent(),
+            xml_parser_agent=XmlParserAgent(),
             retrieval_agent=RetrievalAgent(),
             pk_extractor_agent=PKExtractorAgent(analysis_llm),
             reviewer_agent=ReviewerAgent(reviewer_llm),
+            pubmed_cycles=pubmed_cycles,
+            pubmed_sleep_sec=pubmed_sleep_sec,
         )
 
         result = orchestrator.run(input_path)
