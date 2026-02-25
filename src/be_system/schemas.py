@@ -46,10 +46,14 @@ class FullTextLink(BaseModel):
     pmid: str
     pmcid: str | None
     has_pmc: bool
+    has_fulltext_pdf: bool = False
+    has_fulltext_xml: bool = False
     pdf_url: str | None
+    xml_url: str | None = None
     article_url: str | None
     pdf_page_url: str | None
     pdf_url_resolved: str | None
+    xml_url_resolved: str | None = None
     source: Literal["pmc", "none"]
 
 
@@ -72,14 +76,22 @@ class PdfChunk(BaseModel):
     text: str
 
 
+class XmlChunk(BaseModel):
+    doc_id: str
+    section: str | None
+    chunk_id: str
+    text: str
+
+
 class EvidenceItem(BaseModel):
     param: Literal["t_half", "cmax"]
     value: float
     unit: str | None
     pmid: str
     pmcid: str | None
-    source_type: Literal["abstract", "pdf"]
+    source_type: Literal["abstract", "pdf", "xml"]
     page: int | None
+    section: str | None = None
     quote: str
     confidence: Literal["high", "medium", "low"]
 
@@ -94,10 +106,26 @@ class RetrievalSelection(BaseModel):
     chunks: list[PdfChunk]
 
 
+class XmlRetrievalSelection(BaseModel):
+    param: Literal["t_half", "cmax"]
+    chunks: list[XmlChunk]
+
+
 class RetrievalResult(BaseModel):
     pmid: str
     pmcid: str | None
     selected_chunks: list[RetrievalSelection]
+
+
+class XmlRetrievalResult(BaseModel):
+    pmid: str
+    pmcid: str | None
+    selected_chunks: list[XmlRetrievalSelection]
+
+
+class AbstractEvaluation(BaseModel):
+    pmid: str
+    candidate_fulltext: bool
 
 
 class OrchestratorResult(BaseModel):

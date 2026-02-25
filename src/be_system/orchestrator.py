@@ -5,9 +5,9 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
+from be_system.agents.abstract_evaluator_agent import AbstractEvaluatorAgent
 from be_system.agents.pk_extractor_agent import PKExtractorAgent
 from be_system.agents.planner_agent import PlannerAgent
-from be_system.agents.pmc_pdf_link_agent import PmcPdfLinkAgent
 from be_system.agents.pmc_resolver_agent import PMCResolverAgent
 from be_system.agents.pubmed_fetch_agent import PubMedFetchAgent
 from be_system.agents.pubmed_search_agent import PubMedSearchAgent
@@ -15,13 +15,10 @@ from be_system.agents.pdf_downloader_agent import PdfDownloaderAgent
 from be_system.agents.pdf_parser_agent import PdfParserAgent
 from be_system.agents.retrieval_agent import RetrievalAgent
 from be_system.agents.reviewer_agent import ReviewerAgent
+from be_system.agents.xml_downloader_agent import XmlDownloaderAgent
+from be_system.agents.xml_parser_agent import XmlParserAgent
 from be_system.logging_utils import fmt_seconds
-from be_system.schemas import (
-    EvidenceItem,
-    FullTextLink,
-    OrchestratorResult,
-    PdfChunk,
-)
+from be_system.schemas import EvidenceItem, FullTextLink, OrchestratorResult, PdfChunk, XmlChunk
 
 
 class Orchestrator:
@@ -30,24 +27,32 @@ class Orchestrator:
         planner_agent: PlannerAgent,
         pubmed_search_agent: PubMedSearchAgent,
         pubmed_fetch_agent: PubMedFetchAgent,
+        abstract_evaluator_agent: AbstractEvaluatorAgent,
         pmc_resolver_agent: PMCResolverAgent,
-        pmc_pdf_link_agent: PmcPdfLinkAgent,
         pdf_downloader_agent: PdfDownloaderAgent,
+        xml_downloader_agent: XmlDownloaderAgent,
         pdf_parser_agent: PdfParserAgent,
+        xml_parser_agent: XmlParserAgent,
         retrieval_agent: RetrievalAgent,
         pk_extractor_agent: PKExtractorAgent,
         reviewer_agent: ReviewerAgent,
+        pubmed_cycles: int = 2,
+        pubmed_sleep_sec: float = 1.0,
     ):
         self.planner_agent = planner_agent
         self.pubmed_search_agent = pubmed_search_agent
         self.pubmed_fetch_agent = pubmed_fetch_agent
+        self.abstract_evaluator_agent = abstract_evaluator_agent
         self.pmc_resolver_agent = pmc_resolver_agent
-        self.pmc_pdf_link_agent = pmc_pdf_link_agent
         self.pdf_downloader_agent = pdf_downloader_agent
+        self.xml_downloader_agent = xml_downloader_agent
         self.pdf_parser_agent = pdf_parser_agent
+        self.xml_parser_agent = xml_parser_agent
         self.retrieval_agent = retrieval_agent
         self.pk_extractor_agent = pk_extractor_agent
         self.reviewer_agent = reviewer_agent
+        self.pubmed_cycles = max(1, pubmed_cycles)
+        self.pubmed_sleep_sec = pubmed_sleep_sec
         self.logger = logging.getLogger("be_system.orchestrator")
 
     def run(self, user_input_path: str | Path) -> OrchestratorResult:
@@ -60,100 +65,131 @@ class Orchestrator:
 
         planner_started = time.perf_counter()
         planner_output = self.planner_agent.run(user_input)
-        planner_elapsed = time.perf_counter() - planner_started
-        self.logger.info("Planner done | elapsed=%ss", fmt_seconds(planner_elapsed))
+        self.logger.info("Planner done | elapsed=%ss", fmt_seconds(time.perf_counter() - planner_started))
 
         inn = str(user_input.get("inn", "")).strip()
-        search_result = self.pubmed_search_agent.run(inn)
-        self.logger.info("PubMed search done | pmids=%s", search_result.pmids)
+        search_result = None
+        articles = []
+        fulltext_links: list[FullTextLink] = []
 
-        articles = self.pubmed_fetch_agent.run(search_result.pmids)
-        self.logger.info("PubMed fetch done | articles=%d", len(articles))
+        for cycle in range(self.pubmed_cycles):
+            self.logger.info("Cycle start | cycle=%d/%d", cycle + 1, self.pubmed_cycles)
+            self.logger.info("Sleep before PubMed search | seconds=%s", self.pubmed_sleep_sec)
+            time.sleep(self.pubmed_sleep_sec)
 
-        fulltext_links = self.pmc_resolver_agent.run(search_result.pmids)
-        fulltext_links = self.pmc_pdf_link_agent.run(fulltext_links)
+            search_result = self.pubmed_search_agent.run(inn)
+            self.logger.info("PubMed pmids found | cycle=%d | count=%d", cycle + 1, len(search_result.pmids))
+
+            articles = self.pubmed_fetch_agent.run(search_result.pmids)
+            self.logger.info("PubMed abstracts fetched | cycle=%d | count=%d", cycle + 1, len(articles))
+
+            pmc_resolved = self.pmc_resolver_agent.run(search_result.pmids)
+            pmid_to_pmcid = {item.pmid: item.pmcid for item in pmc_resolved}
+            decisions = self.abstract_evaluator_agent.run(articles, pmid_to_pmcid)
+            candidate_pmids = {item.pmid for item in decisions if item.candidate_fulltext}
+
+            self.logger.info(
+                "AbstractEvaluator decisions | cycle=%d | candidates=%d",
+                cycle + 1,
+                len(candidate_pmids),
+            )
+
+            if candidate_pmids:
+                fulltext_links = [item for item in pmc_resolved if item.pmid in candidate_pmids]
+                if any(item.has_fulltext_pdf or item.has_fulltext_xml for item in fulltext_links):
+                    break
+
+        if not fulltext_links or not any(item.has_fulltext_pdf or item.has_fulltext_xml for item in fulltext_links):
+            self.logger.info("No full text available after all retries. Proceeding with abstracts only.")
+
         pmid_to_link = {item.pmid: item for item in fulltext_links}
-        links_with_pmc = [item for item in fulltext_links if item.has_pmc]
 
         inn_folder_prefix = inn or "unknown_inn"
-        pdf_output_dir = Path("data/raw_pmc") / f"{inn_folder_prefix}_{run_id}"
+        raw_output_dir = Path("data/raw_pmc") / f"{inn_folder_prefix}_{run_id}"
 
-        download_started = time.perf_counter()
-        downloaded_files = self.pdf_downloader_agent.run(links_with_pmc, output_dir=pdf_output_dir)
-        download_elapsed = time.perf_counter() - download_started
-        self.logger.info("PDF download stage elapsed | elapsed=%ss", fmt_seconds(download_elapsed))
+        pdf_downloads = self.pdf_downloader_agent.run(fulltext_links, output_dir=raw_output_dir / "pdf")
+        xml_downloads = self.xml_downloader_agent.run(fulltext_links, output_dir=raw_output_dir / "xml")
+        self.logger.info(
+            "Download summary | pdf_valid=%d/%d | xml_valid=%d/%d",
+            len([f for f in pdf_downloads if f.is_valid_pdf]),
+            len(pdf_downloads),
+            len([f for f in xml_downloads if f.is_valid_pdf]),
+            len(xml_downloads),
+        )
         (run_dir / "pdf_manifest.json").write_text(
-            json.dumps([item.model_dump() for item in downloaded_files], ensure_ascii=False, indent=2),
+            json.dumps([item.model_dump() for item in pdf_downloads], ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        (run_dir / "xml_manifest.json").write_text(
+            json.dumps([item.model_dump() for item in xml_downloads], ensure_ascii=False, indent=2),
             encoding="utf-8",
         )
 
-        valid_downloaded_files = [item for item in downloaded_files if item.is_valid_pdf]
+        pdf_chunks = self.pdf_parser_agent.run([item for item in pdf_downloads if item.is_valid_pdf])
+        xml_chunks = self.xml_parser_agent.run([item for item in xml_downloads if item.is_valid_pdf])
+        self._save_chunks(run_dir / "pdf_chunks.jsonl", pdf_chunks)
+        self._save_xml_chunks(run_dir / "xml_chunks.jsonl", xml_chunks)
 
-        parse_started = time.perf_counter()
-        chunks = self.pdf_parser_agent.run(valid_downloaded_files)
-        parse_elapsed = time.perf_counter() - parse_started
-        self.logger.info(
-            "PDF parse done | chunks_total=%d | elapsed=%ss",
-            len(chunks),
-            fmt_seconds(parse_elapsed),
-        )
-        self._save_chunks(run_dir / "pdf_chunks.jsonl", chunks)
+        pdf_by_doc: dict[str, list[PdfChunk]] = {}
+        for chunk in pdf_chunks:
+            pdf_by_doc.setdefault(chunk.doc_id, []).append(chunk)
 
-        chunks_by_doc: dict[str, list[PdfChunk]] = {}
-        for chunk in chunks:
-            chunks_by_doc.setdefault(chunk.doc_id, []).append(chunk)
+        xml_by_doc: dict[str, list[XmlChunk]] = {}
+        for chunk in xml_chunks:
+            xml_by_doc.setdefault(chunk.doc_id, []).append(chunk)
 
-        extraction_started = time.perf_counter()
         all_evidence: list[EvidenceItem] = []
+        extraction_started = time.perf_counter()
 
         for article in articles:
-            link: FullTextLink | None = pmid_to_link.get(article.pmid)
+            link = pmid_to_link.get(article.pmid)
             pmcid = link.pmcid if link else None
-            source_is_pdf = bool(link and pmcid in chunks_by_doc)
+            source_type = "abstract"
+            fragments = [{"page": None, "section": None, "text": article.abstract}]
 
-            if source_is_pdf and pmcid:
-                retrieval = self.retrieval_agent.run(
-                    pmid=article.pmid,
-                    pmcid=pmcid,
-                    chunks=chunks_by_doc.get(pmcid, []),
-                )
-                fragments = []
-                for selection in retrieval.selected_chunks:
-                    for chunk in selection.chunks:
-                        fragments.append(
-                            {
-                                "param_hint": selection.param,
-                                "page": chunk.page,
-                                "chunk_id": chunk.chunk_id,
-                                "text": chunk.text,
-                            }
-                        )
+            if pmcid and pmcid in xml_by_doc:
+                retrieval = self.retrieval_agent.run_xml(article.pmid, pmcid, xml_by_doc[pmcid])
+                source_type = "xml"
+                fragments = [
+                    {
+                        "param_hint": selection.param,
+                        "page": None,
+                        "section": chunk.section,
+                        "chunk_id": chunk.chunk_id,
+                        "text": chunk.text,
+                    }
+                    for selection in retrieval.selected_chunks
+                    for chunk in selection.chunks
+                ]
+            elif pmcid and pmcid in pdf_by_doc:
+                retrieval = self.retrieval_agent.run(article.pmid, pmcid, pdf_by_doc[pmcid])
+                source_type = "pdf"
+                fragments = [
+                    {
+                        "param_hint": selection.param,
+                        "page": chunk.page,
+                        "section": None,
+                        "chunk_id": chunk.chunk_id,
+                        "text": chunk.text,
+                    }
+                    for selection in retrieval.selected_chunks
+                    for chunk in selection.chunks
+                ]
 
-                result = self.pk_extractor_agent.run(
-                    pmid=article.pmid,
-                    pmcid=pmcid,
-                    source_type="pdf",
-                    fragments=fragments,
-                    errors_dir=errors_dir,
-                    article_tag=f"{article.pmid}_pdf",
-                )
-            else:
-                fragments = [{"page": None, "text": article.abstract}]
-                result = self.pk_extractor_agent.run(
-                    pmid=article.pmid,
-                    pmcid=pmcid,
-                    source_type="abstract",
-                    fragments=fragments,
-                    errors_dir=errors_dir,
-                    article_tag=f"{article.pmid}_abstract",
-                )
+            result = self.pk_extractor_agent.run(
+                pmid=article.pmid,
+                pmcid=pmcid,
+                source_type=source_type,
+                fragments=fragments,
+                errors_dir=errors_dir,
+                article_tag=f"{article.pmid}_{source_type}",
+            )
             all_evidence.extend(result.evidence)
 
-        extraction_elapsed = time.perf_counter() - extraction_started
         self.logger.info(
-            "PK extraction done | evidence_count=%d | elapsed=%ss",
+            "PK extraction summary | evidence_count=%d | elapsed=%ss",
             len(all_evidence),
-            fmt_seconds(extraction_elapsed),
+            fmt_seconds(time.perf_counter() - extraction_started),
         )
 
         (run_dir / "evidence.json").write_text(
@@ -166,8 +202,7 @@ class Orchestrator:
 
         reviewer_started = time.perf_counter()
         reviewer_output = self.reviewer_agent.run(planner_output)
-        reviewer_elapsed = time.perf_counter() - reviewer_started
-        self.logger.info("Reviewer done | elapsed=%ss", fmt_seconds(reviewer_elapsed))
+        self.logger.info("Reviewer done | elapsed=%ss", fmt_seconds(time.perf_counter() - reviewer_started))
 
         return OrchestratorResult(
             user_input=user_input,
@@ -186,6 +221,11 @@ class Orchestrator:
         )
 
     def _save_chunks(self, path: Path, chunks: list[PdfChunk]) -> None:
+        with path.open("w", encoding="utf-8") as f:
+            for chunk in chunks:
+                f.write(json.dumps(chunk.model_dump(), ensure_ascii=False) + "\n")
+
+    def _save_xml_chunks(self, path: Path, chunks: list[XmlChunk]) -> None:
         with path.open("w", encoding="utf-8") as f:
             for chunk in chunks:
                 f.write(json.dumps(chunk.model_dump(), ensure_ascii=False) + "\n")
@@ -245,7 +285,7 @@ class Orchestrator:
             return
         for item in items:
             self.logger.info(
-                "%s: %s %s | pmid=%s | pmcid=%s | src=%s | page=%s",
+                "%s: %s %s | pmid=%s | pmcid=%s | src=%s | page=%s | section=%s",
                 label,
                 item.value,
                 item.unit or "",
@@ -253,4 +293,5 @@ class Orchestrator:
                 item.pmcid,
                 item.source_type,
                 item.page,
+                item.section,
             )
