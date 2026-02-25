@@ -13,7 +13,17 @@ bash scripts/run_vllm_qwen.sh
 2. Запуск системы:
 
 ```bash
-python -m be_system.main
+python main.py
+```
+
+По умолчанию используется модель `Qwen/Qwen2.5-7B-Instruct` (совместимо со скриптом `scripts/run_vllm_qwen.sh`).
+При необходимости можно переопределить через переменные окружения:
+
+```bash
+export VLLM_MODEL="Qwen/Qwen2.5-7B-Instruct"
+# или отдельно:
+export PLANNER_MODEL="..."
+export REVIEWER_MODEL="..."
 ```
 
 ## Что делает MVP
