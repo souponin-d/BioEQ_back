@@ -1,6 +1,13 @@
 import logging
 
-from be_system.schemas import PdfChunk, RetrievalResult, RetrievalSelection
+from be_system.schemas import (
+    PdfChunk,
+    RetrievalResult,
+    RetrievalSelection,
+    XmlChunk,
+    XmlRetrievalResult,
+    XmlRetrievalSelection,
+)
 
 
 class RetrievalAgent:
@@ -37,9 +44,17 @@ class RetrievalAgent:
 
         return RetrievalResult(pmid=pmid, pmcid=pmcid, selected_chunks=selections)
 
-    def _top_chunks(self, param: str, chunks: list[PdfChunk]) -> list[PdfChunk]:
+    def run_xml(self, pmid: str, pmcid: str, chunks: list[XmlChunk]) -> XmlRetrievalResult:
+        selections: list[XmlRetrievalSelection] = []
+        for param in ("t_half", "cmax"):
+            selected = self._top_chunks(param, chunks)
+            selections.append(XmlRetrievalSelection(param=param, chunks=selected))
+
+        return XmlRetrievalResult(pmid=pmid, pmcid=pmcid, selected_chunks=selections)
+
+    def _top_chunks(self, param: str, chunks: list[PdfChunk | XmlChunk]) -> list[PdfChunk | XmlChunk]:
         keys = self.keywords[param]
-        scored: list[tuple[int, int, PdfChunk]] = []
+        scored: list[tuple[int, int, PdfChunk | XmlChunk]] = []
         for idx, chunk in enumerate(chunks):
             lowered = chunk.text.lower()
             score = 0
