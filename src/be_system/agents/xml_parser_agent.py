@@ -23,7 +23,11 @@ class XmlParserAgent:
         raw = Path(file.local_path).read_text(encoding="utf-8", errors="ignore")
         self.logger.debug("Raw BioC/XML | doc_id=%s | body_prefix=%s", file.id, raw[:500])
 
-        root = ET.fromstring(raw)
+        try:
+            root = ET.fromstring(raw)
+        except ET.ParseError:
+            self.logger.exception("Failed to parse XML/BioC | doc_id=%s", file.id)
+            return []
         section_texts: list[tuple[str | None, str]] = []
 
         for passage in root.findall(".//passage"):

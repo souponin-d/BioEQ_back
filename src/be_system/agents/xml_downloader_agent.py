@@ -2,6 +2,7 @@ import hashlib
 import json
 import logging
 from pathlib import Path
+from urllib.parse import urlparse
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
@@ -9,7 +10,7 @@ from be_system.schemas import DownloadedFile, FullTextLink
 
 
 class XmlDownloaderAgent:
-    def __init__(self, output_dir: str | Path = "data/raw_pmc", timeout_sec: float = 60.0):
+    def __init__(self, output_dir: str | Path = "data/raw_pmc_xml", timeout_sec: float = 60.0):
         self.output_dir = Path(output_dir)
         self.timeout_sec = timeout_sec
         self.logger = logging.getLogger("be_system.agents.xml_downloader")
@@ -38,8 +39,13 @@ class XmlDownloaderAgent:
         body = b""
         reason: str | None = None
 
+        normalized_url = self._normalize_download_url(url)
+
         try:
-            req = Request(url, headers={"User-Agent": "be_system/1.0"})
+            req = Request(
+                normalized_url,
+                headers={"User-Agent": "be_system/1.0", "Accept": "application/xml,text/xml,*/*"},
+            )
             with urlopen(req, timeout=self.timeout_sec) as response:
                 status_code = getattr(response, "status", 200)
                 content_type = response.headers.get("Content-Type")
@@ -55,7 +61,7 @@ class XmlDownloaderAgent:
         self.logger.debug(
             "XML URL response | pmcid=%s | url=%s | status=%s | content_type=%s",
             doc_id,
-            url,
+            normalized_url,
             status_code,
             content_type,
         )
@@ -66,12 +72,16 @@ class XmlDownloaderAgent:
         if reason is None and not body.strip():
             reason = "empty_body"
 
+        normalized_content_type = (content_type or "").lower()
+        if reason is None and "xml" not in normalized_content_type and not body.lstrip().startswith(b"<"):
+            reason = "content_type_mismatch"
+
         if reason is None:
             sha256 = hashlib.sha256(body).hexdigest()
             target_path.write_bytes(body)
             return DownloadedFile(
                 id=doc_id,
-                url=url,
+                url=normalized_url,
                 local_path=str(target_path),
                 sha256=sha256,
                 bytes=len(body),
@@ -86,7 +96,7 @@ class XmlDownloaderAgent:
             json.dumps(
                 {
                     "id": doc_id,
-                    "url": url,
+                    "url": normalized_url,
                     "status_code": status_code,
                     "content_type": content_type,
                     "reason": reason,
@@ -98,7 +108,7 @@ class XmlDownloaderAgent:
         )
         return DownloadedFile(
             id=doc_id,
-            url=url,
+            url=normalized_url,
             local_path=str(target_path),
             sha256="",
             bytes=len(body),
@@ -107,3 +117,9 @@ class XmlDownloaderAgent:
             content_type=content_type,
             status_code=status_code,
         )
+
+    def _normalize_download_url(self, url: str) -> str:
+        parsed = urlparse(url)
+        if parsed.scheme.lower() == "ftp" and parsed.netloc.lower().endswith("ncbi.nlm.nih.gov"):
+            return f"https://{parsed.netloc}{parsed.path}"
+        return url

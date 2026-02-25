@@ -100,7 +100,18 @@ class Orchestrator:
                     break
 
         if not fulltext_links or not any(item.has_fulltext_pdf or item.has_fulltext_xml for item in fulltext_links):
-            self.logger.info("No full text available after all retries. Proceeding with abstracts only.")
+            self.logger.info(
+                "No full text available after all retries. Full text not available in OA subset; proceeding with abstracts only."
+            )
+
+        for link in fulltext_links:
+            self.logger.info(
+                "Full text availability | pmid=%s | pmcid=%s | pdf=%s | xml=%s",
+                link.pmid,
+                link.pmcid,
+                link.has_fulltext_pdf,
+                link.has_fulltext_xml,
+            )
 
         pmid_to_link = {item.pmid: item for item in fulltext_links}
 
@@ -108,7 +119,7 @@ class Orchestrator:
         raw_output_dir = Path("data/raw_pmc") / f"{inn_folder_prefix}_{run_id}"
 
         pdf_downloads = self.pdf_downloader_agent.run(fulltext_links, output_dir=raw_output_dir / "pdf")
-        xml_downloads = self.xml_downloader_agent.run(fulltext_links, output_dir=raw_output_dir / "xml")
+        xml_downloads = self.xml_downloader_agent.run(fulltext_links, output_dir=Path("data/raw_pmc_xml") / f"{inn_folder_prefix}_{run_id}")
         self.logger.info(
             "Download summary | pdf_valid=%d/%d | xml_valid=%d/%d",
             len([f for f in pdf_downloads if f.is_valid_pdf]),

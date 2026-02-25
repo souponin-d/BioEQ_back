@@ -54,7 +54,7 @@ class RetrievalAgent:
 
     def _top_chunks(self, param: str, chunks: list[PdfChunk | XmlChunk]) -> list[PdfChunk | XmlChunk]:
         keys = self.keywords[param]
-        scored: list[tuple[int, int, PdfChunk]] = []
+        scored: list[tuple[int, int, PdfChunk | XmlChunk]] = []
         for idx, chunk in enumerate(chunks):
             lowered = chunk.text.lower()
             score = 0
