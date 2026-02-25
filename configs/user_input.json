@@ -1,0 +1,15 @@
+{
+  "inn": "Rivaroxaban",
+  "dosage_form": "film-coated tablet",
+  "strength": "20 mg",
+  "intra_subject_variability": "auto",
+  "rsabe_required": "auto",
+  "preferred_design": "auto",
+  "administration_mode": "both",
+  "study_type": "auto",
+  "additional_requirements": {
+    "gender": "both",
+    "age_range": "18-45",
+    "restrictions": ["non-smokers", "BMI 18-30"]
+  }
+}
