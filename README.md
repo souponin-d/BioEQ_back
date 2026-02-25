@@ -26,6 +26,22 @@ export PLANNER_MODEL="..."
 export REVIEWER_MODEL="..."
 ```
 
+## Логирование и тайминги
+
+Теперь система использует централизованное логирование с ISO-таймстампами (`YYYY-MM-DDTHH:MM:SS`) и подробными таймингами по этапам:
+
+- старт/окончание оркестрации
+- `load_input`, `planner_call`, `reviewer_call`
+- start/end LLM-запросов
+- итоговое общее время выполнения (`Total elapsed`)
+
+Включить детальные DEBUG-логи можно через переменную окружения:
+
+```bash
+export LOG_LEVEL=DEBUG
+python main.py
+```
+
 ## Что делает MVP
 
 - читает входные параметры из `configs/user_input.json`
