@@ -14,6 +14,7 @@ if str(SRC_DIR) not in sys.path:
 
 from be_system.agents.planner_agent import PlannerAgent
 from be_system.agents.pk_extractor_agent import PKExtractorAgent
+from be_system.agents.pmc_pdf_link_agent import PmcPdfLinkAgent
 from be_system.agents.pmc_resolver_agent import PMCResolverAgent
 from be_system.agents.pubmed_fetch_agent import PubMedFetchAgent
 from be_system.agents.pdf_downloader_agent import PdfDownloaderAgent
@@ -71,6 +72,7 @@ def main() -> None:
             pubmed_search_agent=PubMedSearchAgent(n_articles=pubmed_n_articles),
             pubmed_fetch_agent=PubMedFetchAgent(),
             pmc_resolver_agent=PMCResolverAgent(),
+            pmc_pdf_link_agent=PmcPdfLinkAgent(),
             pdf_downloader_agent=PdfDownloaderAgent(),
             pdf_parser_agent=PdfParserAgent(),
             retrieval_agent=RetrievalAgent(),

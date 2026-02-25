@@ -47,6 +47,9 @@ class FullTextLink(BaseModel):
     pmcid: str | None
     has_pmc: bool
     pdf_url: str | None
+    article_url: str | None
+    pdf_page_url: str | None
+    pdf_url_resolved: str | None
     source: Literal["pmc", "none"]
 
 
@@ -56,6 +59,10 @@ class DownloadedFile(BaseModel):
     local_path: str
     sha256: str
     bytes: int
+    is_valid_pdf: bool
+    validation_reason: str | None
+    content_type: str | None
+    status_code: int | None
 
 
 class PdfChunk(BaseModel):
