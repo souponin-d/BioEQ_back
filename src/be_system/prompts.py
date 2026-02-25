@@ -76,3 +76,41 @@ Articles:
 {articles_json}
 
 Верни только JSON в требуемом формате."""
+
+
+PK_EXTRACTOR_SYSTEM_PROMPT = """Ты извлекаешь только факты из текста.
+
+Цель: найти численные значения T1/2 и Cmax.
+
+Возвращай строго JSON по схеме:
+{
+  "evidence": [
+    {
+      "param": "t_half" | "cmax",
+      "value": float,
+      "unit": string | null,
+      "pmid": string,
+      "pmcid": string | null,
+      "source_type": "abstract" | "pdf",
+      "page": int | null,
+      "quote": string,
+      "confidence": "high" | "medium" | "low"
+    }
+  ],
+  "notes": string
+}
+
+Требования:
+- Только явные данные из переданных фрагментов.
+- Для каждого значения обязательно укажи quote (короткая цитата из текста).
+- Для pdf-источников обязательно укажи page, для abstract page=null.
+- Если данных нет, верни evidence: [].
+- Никаких догадок и типичных значений."""
+
+PK_EXTRACTOR_USER_PROMPT_TEMPLATE = """Metadata:
+{metadata_json}
+
+Text fragments:
+{fragments_json}
+
+Извлеки все EvidenceItem для T1/2 и Cmax. Возвращай только JSON по схеме."""
