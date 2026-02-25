@@ -1,6 +1,4 @@
 import logging
-from urllib.error import HTTPError, URLError
-from urllib.request import Request, urlopen
 
 from Bio import Entrez
 
@@ -8,8 +6,7 @@ from be_system.schemas import FullTextLink
 
 
 class PMCResolverAgent:
-    def __init__(self, timeout_sec: float = 10.0):
-        self.timeout_sec = timeout_sec
+    def __init__(self):
         self.logger = logging.getLogger("be_system.agents.pmc_resolver")
 
     def run(self, pmids: list[str]) -> list[FullTextLink]:
@@ -38,20 +35,18 @@ class PMCResolverAgent:
         for pmid in pmids:
             uid = pmid_to_uid.get(pmid)
             pmcid = uid_to_pmcid.get(uid) if uid else None
-            pdf_url = None
-            if pmcid:
-                candidate = f"https://pmc.ncbi.nlm.nih.gov/articles/{pmcid}/pdf/"
-                if self._is_pdf_url_available(candidate):
-                    pdf_url = candidate
-
+            article_url = f"https://pmc.ncbi.nlm.nih.gov/articles/{pmcid}/" if pmcid else None
             has_pmc = pmcid is not None
             results.append(
                 FullTextLink(
                     pmid=pmid,
                     pmcid=pmcid,
                     has_pmc=has_pmc,
-                    pdf_url=pdf_url,
-                    source="pmc" if pdf_url else "none",
+                    pdf_url=None,
+                    article_url=article_url,
+                    pdf_page_url=article_url,
+                    pdf_url_resolved=None,
+                    source="pmc" if has_pmc else "none",
                 )
             )
 
@@ -83,20 +78,3 @@ class PMCResolverAgent:
                 out[uid] = pmcid
 
         return out
-
-    def _is_pdf_url_available(self, url: str) -> bool:
-        methods = ["HEAD", "GET"]
-        for method in methods:
-            try:
-                req = Request(url=url, method=method)
-                with urlopen(req, timeout=self.timeout_sec) as response:
-                    status = getattr(response, "status", 200)
-                    if status == 200:
-                        return True
-            except HTTPError as exc:
-                if exc.code in (403, 404):
-                    return False
-                self.logger.debug("PDF URL check error %s for %s", exc.code, url)
-            except URLError:
-                self.logger.debug("Network error while checking PDF URL: %s", url)
-        return False

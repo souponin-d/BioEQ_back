@@ -7,6 +7,7 @@ from pathlib import Path
 
 from be_system.agents.pk_extractor_agent import PKExtractorAgent
 from be_system.agents.planner_agent import PlannerAgent
+from be_system.agents.pmc_pdf_link_agent import PmcPdfLinkAgent
 from be_system.agents.pmc_resolver_agent import PMCResolverAgent
 from be_system.agents.pubmed_fetch_agent import PubMedFetchAgent
 from be_system.agents.pubmed_search_agent import PubMedSearchAgent
@@ -30,6 +31,7 @@ class Orchestrator:
         pubmed_search_agent: PubMedSearchAgent,
         pubmed_fetch_agent: PubMedFetchAgent,
         pmc_resolver_agent: PMCResolverAgent,
+        pmc_pdf_link_agent: PmcPdfLinkAgent,
         pdf_downloader_agent: PdfDownloaderAgent,
         pdf_parser_agent: PdfParserAgent,
         retrieval_agent: RetrievalAgent,
@@ -40,6 +42,7 @@ class Orchestrator:
         self.pubmed_search_agent = pubmed_search_agent
         self.pubmed_fetch_agent = pubmed_fetch_agent
         self.pmc_resolver_agent = pmc_resolver_agent
+        self.pmc_pdf_link_agent = pmc_pdf_link_agent
         self.pdf_downloader_agent = pdf_downloader_agent
         self.pdf_parser_agent = pdf_parser_agent
         self.retrieval_agent = retrieval_agent
@@ -68,29 +71,26 @@ class Orchestrator:
         self.logger.info("PubMed fetch done | articles=%d", len(articles))
 
         fulltext_links = self.pmc_resolver_agent.run(search_result.pmids)
+        fulltext_links = self.pmc_pdf_link_agent.run(fulltext_links)
         pmid_to_link = {item.pmid: item for item in fulltext_links}
-        links_with_pdf = [item for item in fulltext_links if item.pdf_url]
-        self.logger.info(
-            "PMC resolve done | with_pdf=%d | fallback_abstract=%d",
-            len(links_with_pdf),
-            len(articles) - len(links_with_pdf),
-        )
+        links_with_pmc = [item for item in fulltext_links if item.has_pmc]
+
+        inn_folder_prefix = inn or "unknown_inn"
+        pdf_output_dir = Path("data/raw_pmc") / f"{inn_folder_prefix}_{run_id}"
 
         download_started = time.perf_counter()
-        downloaded_files = self.pdf_downloader_agent.run(links_with_pdf)
+        downloaded_files = self.pdf_downloader_agent.run(links_with_pmc, output_dir=pdf_output_dir)
         download_elapsed = time.perf_counter() - download_started
-        self.logger.info(
-            "PDF download done | downloaded=%d | elapsed=%ss",
-            len(downloaded_files),
-            fmt_seconds(download_elapsed),
-        )
+        self.logger.info("PDF download stage elapsed | elapsed=%ss", fmt_seconds(download_elapsed))
         (run_dir / "pdf_manifest.json").write_text(
             json.dumps([item.model_dump() for item in downloaded_files], ensure_ascii=False, indent=2),
             encoding="utf-8",
         )
 
+        valid_downloaded_files = [item for item in downloaded_files if item.is_valid_pdf]
+
         parse_started = time.perf_counter()
-        chunks = self.pdf_parser_agent.run(downloaded_files)
+        chunks = self.pdf_parser_agent.run(valid_downloaded_files)
         parse_elapsed = time.perf_counter() - parse_started
         self.logger.info(
             "PDF parse done | chunks_total=%d | elapsed=%ss",
@@ -109,7 +109,7 @@ class Orchestrator:
         for article in articles:
             link: FullTextLink | None = pmid_to_link.get(article.pmid)
             pmcid = link.pmcid if link else None
-            source_is_pdf = bool(link and link.pdf_url and pmcid in chunks_by_doc)
+            source_is_pdf = bool(link and pmcid in chunks_by_doc)
 
             if source_is_pdf and pmcid:
                 retrieval = self.retrieval_agent.run(
