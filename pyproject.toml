@@ -13,6 +13,7 @@ dependencies = [
   "openai",
   "pydantic",
   "python-dotenv",
+  "pypdf",
 ]
 
 [tool.setuptools]

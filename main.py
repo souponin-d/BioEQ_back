@@ -12,9 +12,13 @@ SRC_DIR = PROJECT_ROOT / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
-from be_system.agents.abstract_analysis_agent import AbstractAnalysisAgent
 from be_system.agents.planner_agent import PlannerAgent
+from be_system.agents.pk_extractor_agent import PKExtractorAgent
+from be_system.agents.pmc_resolver_agent import PMCResolverAgent
 from be_system.agents.pubmed_fetch_agent import PubMedFetchAgent
+from be_system.agents.pdf_downloader_agent import PdfDownloaderAgent
+from be_system.agents.pdf_parser_agent import PdfParserAgent
+from be_system.agents.retrieval_agent import RetrievalAgent
 from be_system.agents.pubmed_search_agent import PubMedSearchAgent
 from be_system.agents.reviewer_agent import ReviewerAgent
 from be_system.llm_client import LLMClient
@@ -66,7 +70,11 @@ def main() -> None:
             planner_agent=PlannerAgent(planner_llm),
             pubmed_search_agent=PubMedSearchAgent(n_articles=pubmed_n_articles),
             pubmed_fetch_agent=PubMedFetchAgent(),
-            abstract_analysis_agent=AbstractAnalysisAgent(analysis_llm),
+            pmc_resolver_agent=PMCResolverAgent(),
+            pdf_downloader_agent=PdfDownloaderAgent(),
+            pdf_parser_agent=PdfParserAgent(),
+            retrieval_agent=RetrievalAgent(),
+            pk_extractor_agent=PKExtractorAgent(analysis_llm),
             reviewer_agent=ReviewerAgent(reviewer_llm),
         )
 
@@ -76,7 +84,9 @@ def main() -> None:
         logger.info("T1/2 values found: %s", result.t_half_values)
         logger.info("Cmax values found: %s", result.cmax_values)
         logger.info("Mean T1/2: %s", result.mean_t_half)
+        logger.info("Median T1/2: %s", result.median_t_half)
         logger.info("Mean Cmax: %s", result.mean_cmax)
+        logger.info("Median Cmax: %s", result.median_cmax)
 
         print("Planner output:")
         print(json.dumps(result.planner_output.model_dump(), ensure_ascii=False, indent=2))
