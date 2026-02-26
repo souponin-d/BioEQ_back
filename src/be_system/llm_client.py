@@ -1,4 +1,5 @@
 import logging
+import os
 import time
 
 from openai import OpenAI
@@ -16,7 +17,7 @@ class LLMClient:
         self,
         system_prompt: str,
         user_prompt: str,
-        temperature: float = 0.2,
+        temperature: float | None = None,
         max_tokens: int | None = None,
     ) -> str:
         self.logger.debug(
@@ -28,9 +29,14 @@ class LLMClient:
 
         started_at = time.perf_counter()
         try:
+            resolved_temperature = (
+                float(os.getenv("LLM_TEMPERATURE", "0.0"))
+                if temperature is None
+                else temperature
+            )
             request_kwargs = {
                 "model": self.model_name,
-                "temperature": temperature,
+                "temperature": resolved_temperature,
                 "messages": [
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt},
