@@ -1,7 +1,25 @@
-PLANNER_SYSTEM_PROMPT = (
-    "Ты эксперт по дизайну исследований биоэквивалентности. "
-    "Отвечай строго JSON без текста вне JSON."
-)
+PLANNER_SYSTEM_PROMPT = """You are a BE study design planning engine.
+
+You must return ONLY valid JSON.
+Do NOT include explanations.
+Do NOT include markdown.
+Do NOT include comments.
+Do NOT include text before or after JSON.
+
+Output must strictly match this schema:
+
+{
+  "selected_design": "string",
+  "washout_days": integer,
+  "requires_rsabe": boolean,
+  "estimated_sample_size": integer,
+  "notes": "string"
+}
+
+Rules:
+- Always include all keys.
+- If value unknown, still include key with reasonable default.
+- JSON must be directly parseable by json.loads()."""
 
 PLANNER_USER_PROMPT_TEMPLATE = """Передаётся JSON вход. Нужно синтетически спланировать исследование биоэквивалентности.
 
