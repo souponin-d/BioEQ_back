@@ -1,0 +1,12 @@
+{
+  "meta": {
+    "iterations_per_drug": 5,
+    "timestamp": "",
+    "model_config": {
+      "planner_model": "",
+      "pk_model": "",
+      "reviewer_model": ""
+    }
+  },
+  "drugs": []
+}
